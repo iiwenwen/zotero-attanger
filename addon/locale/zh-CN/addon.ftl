@@ -8,3 +8,4 @@ undo-move-attachment = 撤销移动附件
 restore-pdf-annotation = 恢复PDF标注
 open-using = 打开方式
 choose-other-app = 选择其它应用
+store-to-link = 将存储文件转换链接文件

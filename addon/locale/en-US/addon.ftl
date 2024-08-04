@@ -8,3 +8,4 @@ undo-move-attachment = Undo Move Attachment
 restore-pdf-annotation = Restore PDF Annotation
 open-using = Open Using
 choose-other-app = Choose Other App
+store-to-link=Convert stored files to linked files
