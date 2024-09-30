@@ -139,7 +139,7 @@ export default class Menu {
     registerShortcut("attachNewFile.shortcut", async () => {
       await attachNewFileCallback();
     });
-    //   分类
+    // 分类
     ztoolkit.Menu.register("collection", {
       tag: "menuitem",
       label: getString("attach-new-file"),
@@ -165,7 +165,7 @@ export default class Menu {
       },
       label: getString("attachment-manager"),
       icon: addon.data.icons.favicon,
-      subElementOptions: [
+      children: [
         {
           tag: "menuitem",
           label: getString("rename-move-attachment"),
@@ -275,7 +275,7 @@ export default class Menu {
       getVisibility: () => getAttachmentItems(false).length > 0,
       label: getString("open-using"),
       icon: addon.data.icons.openUsing,
-      subElementOptions: [
+      children: [
         {
           tag: "menuitem",
           label: "Zotero",
@@ -618,7 +618,6 @@ export async function moveFile(attItem: Zotero.Item) {
   if (sourcePath == destPath) return;
   if (await IOUtils.exists(destPath)) {
     ztoolkit.log("目标目录存在", file2md5(sourcePath), file2md5(destPath));
-    window.alert(1);
     if (file2md5(sourcePath) != file2md5(destPath)) {
       ztoolkit.log("不是同一个文件");
       await Zotero.Promise.delay(1000);
@@ -859,7 +858,7 @@ function showAttachmentItem(attItem: Zotero.Item) {
     closeOtherProgressWindows: true,
   });
   // 显示父行
-  if (attItem.isTopLevelItem()) {
+  if (attItem && attItem.isTopLevelItem()) {
     popupWin
       .createLine({
         text: (ZoteroPane.getSelectedCollection() as Zotero.Collection).name,
