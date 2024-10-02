@@ -200,21 +200,6 @@ export default class Menu {
         },
         {
           tag: "menuitem",
-          label: getString("store-to-link"),
-          icon: addon.data.icons.moveFile,
-          commandListener: async (_ev) => {
-            for (const item of getAttachmentItems()) {
-              try {
-                const attItem = await StoredFileToLinkedFile(item);
-                attItem && showAttachmentItem(attItem);
-              } catch (e) {
-                ztoolkit.log(e);
-              }
-            }
-          },
-        },
-        {
-          tag: "menuitem",
           label: getString("move-attachment"),
           icon: addon.data.icons.moveFile,
           commandListener: async (_ev) => {
@@ -566,7 +551,7 @@ async function renameFile(attItem: Zotero.Item, retry = 0) {
  * 移动文件
  * @param item Attachment Item
  */
-export async function moveFile(attItem: Zotero.Item) {
+export async function moveFile(attItem: any) {
   if (!checkFileType(attItem)) {
     return;
   }
@@ -696,14 +681,14 @@ export async function moveFile(attItem: Zotero.Item) {
     ztoolkit.log(e);
     return await moveFile(attItem);
   }
-  const options = {
-    file: destPath,
-    libraryID: attItem.topLevelItem.libraryID,
-    parentItemID: attItem.topLevelItem.id,
-    collections: undefined,
-    // title: attItem.topLevelItem.getField("title"),
-  };
-  const newAttItem = await Zotero.Attachments.linkFromFile(options);
+  const json = attItem.toJSON();
+  json.linkMode = "linked_file";
+  json.path = destPath;
+  delete json.filename;
+  const newAttItem = new Zotero.Item("attachment");
+  newAttItem.libraryID = attItem.libraryID;
+  newAttItem.fromJSON(json);
+  await newAttItem.saveTx();
   window.setTimeout(async () => {
     // 迁移标注
     await transferItem(attItem, newAttItem);
@@ -1093,152 +1078,4 @@ async function getPDFData(path: string) {
 
     return result;
   }, false);
-}
-
-async function StoredFileToLinkedFile(attItem: any, options = {}) {
-  if (!checkFileType(attItem)) {
-    return;
-  }
-  let destDir = await checkDir("destDir", "destination directory");
-  // 1. 目标根路径
-  if (!destDir) return;
-  // 2. 中间路径
-  let subfolder = "";
-  const subfolderFormat = getPref("subfolderFormat") as string;
-  // Zotero.Attachments.getFileBaseNameFromItem 补充不支持的变量
-  // 3. 得到最终路径
-  // @ts-ignore 未添加属性
-  const _getValidFileName = Zotero.File.getValidFileName;
-  // @ts-ignore 未添加属性
-  Zotero.File.getValidFileName = (fileName) =>
-    // @ts-ignore
-    fileName.replace(/[?\*:|"<>]/g, "");
-  if (subfolderFormat.length > 0) {
-    subfolder = subfolderFormat
-      .split(/[\\/]/)
-      .map((formatString: string) => {
-        ztoolkit.log(formatString);
-        if (formatString == "{{collection}}") {
-          return getCollectionPathsOfItem(attItem.topLevelItem);
-        } else {
-          return getValidFolderName(
-            Zotero.Attachments.getFileBaseNameFromItem(
-              attItem.topLevelItem,
-              formatString,
-            ),
-          );
-        }
-      })
-      .join(addon.data.folderSep);
-    if (Zotero.isWin) {
-      subfolder = subfolder.replace(/[/]/g, "\\");
-    } else {
-      subfolder = subfolder.replace(/[\\]/g, "/");
-    }
-    // @ts-ignore 未添加属性
-    Zotero.File.getValidFileName = _getValidFileName;
-    ztoolkit.log("subfolder", subfolder);
-    destDir = PathUtils.joinRelative(destDir, subfolder);
-  }
-  const sourcePath = (await attItem.getFilePathAsync()) as string;
-  if (!sourcePath) return;
-  const filename = PathUtils.filename(sourcePath);
-  let destPath = PathUtils.joinRelative(destDir, filename);
-  if (sourcePath == destPath) return;
-  if (await IOUtils.exists(destPath)) {
-    ztoolkit.log("目标目录存在", file2md5(sourcePath), file2md5(destPath));
-    window.alert(1);
-    if (file2md5(sourcePath) != file2md5(destPath)) {
-      ztoolkit.log("不是同一个文件");
-      await Zotero.Promise.delay(1000);
-      // Click to enter a specified suffix.
-      const popupWin = new ztoolkit.ProgressWindow("Attanger", {
-        closeTime: -1,
-        closeOtherProgressWindows: true,
-      })
-        .createLine({
-          text: "The target file already exists; a numeric suffix will be automatically added to the filename.",
-          icon: addon.data.icons.moveFile,
-        })
-        .show();
-      // Zotero.ProgressWindowSet.remove(popupWin)
-      popupWin.addDescription(
-        `<a href="https://zotero.org">Click to enter a specified suffix.</a>`,
-      );
-      await waitUtilAsync(() =>
-        // @ts-ignore oriate
-        Boolean(popupWin.lines && popupWin.lines[0]._itemText),
-      );
-      const lock = Zotero.Promise.defer();
-      const timer = window.setTimeout(() => {
-        popupWin.close();
-        lock.resolve();
-      }, 3e3);
-      // @ts-ignore private
-      popupWin.lines[0]._hbox.ownerDocument
-        .querySelector("label[href]")
-        .addEventListener("click", async (ev: MouseEvent) => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          window.clearTimeout(timer);
-          popupWin.close();
-          const suffix = window.prompt("Suffix") as string;
-          destPath = await addSuffixToFilename(destPath, suffix);
-          lock.resolve();
-        });
-
-      await lock.promise;
-      destPath = await addSuffixToFilename(destPath);
-    } else {
-      ztoolkit.log("是同一个文件");
-      new ztoolkit.ProgressWindow("Attanger", {
-        closeTime: 3000,
-        closeOtherProgressWindows: true,
-      })
-        .createLine({
-          text: "The target file already exists",
-          icon: addon.data.icons.moveFile,
-        })
-        .show();
-      await attItem.eraseTx();
-      return attItem;
-    }
-  }
-  // 创建中间路径
-  if (!(await IOUtils.exists(destDir))) {
-    const create = [destDir];
-    let parent = PathUtils.parent(destDir);
-    while (parent && !(await IOUtils.exists(parent))) {
-      create.push(parent);
-      parent = PathUtils.parent(parent);
-    }
-    await Promise.all(
-      create
-        .reverse()
-        .map(async (f) => await Zotero.File.createDirectoryIfMissingAsync(f)),
-    );
-  }
-  // await Zotero.File.createDirectoryIfMissingAsync(destDir);
-  // 移动文件到目标文件夹
-  try {
-    await IOUtils.move(sourcePath, destPath);
-  } catch (e) {
-    ztoolkit.log(e);
-    return await moveFile(attItem);
-  }
-  const json = attItem.toJSON();
-  json.linkMode = "linked_file";
-  json.path = destPath;
-  delete json.filename;
-  const newAttItem = new Zotero.Item("attachment");
-  newAttItem.libraryID = attItem.libraryID;
-  newAttItem.fromJSON(json);
-  await newAttItem.saveTx();
-  window.setTimeout(async () => {
-    // 迁移标注
-    await transferItem(attItem, newAttItem);
-    removeEmptyFolder(PathUtils.parent(sourcePath) as string);
-    await attItem.eraseTx();
-  });
-  return newAttItem;
 }
